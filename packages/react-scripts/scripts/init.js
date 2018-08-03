@@ -26,11 +26,8 @@ module.exports = function(
   originalDirectory,
   template
 ) {
-  const ownPackageName = require(path.join(
-    __dirname,
-    '..',
-    'package.json'
-  )).name;
+  const ownPackageName = require(path.join(__dirname, '..', 'package.json'))
+    .name;
   const ownPath = path.join(appPath, 'node_modules', ownPackageName);
   const appPackage = require(path.join(appPath, 'package.json'));
   const useYarn = fs.existsSync(path.join(appPath, 'yarn.lock'));
@@ -94,6 +91,7 @@ module.exports = function(
 
   let command;
   let args;
+  let devArgs;
 
   if (useYarn) {
     command = 'yarnpkg';
@@ -103,33 +101,29 @@ module.exports = function(
     args = ['install', '--save', verbose && '--verbose'].filter(e => e);
   }
 
-  // Install dev dependencies
-  const types = [
-    '@types/node',
-    '@types/react',
-    '@types/react-dom',
-    '@types/jest',
-    'typescript',
-  ];
-
-  console.log(
-    `Installing ${types.join(', ')} as dev dependencies ${command}...`
-  );
-  console.log();
-
-  const devProc = spawn.sync(command, args.concat('-D').concat(types), {
-    stdio: 'inherit',
-  });
-  if (devProc.status !== 0) {
-    console.error(`\`${command} ${args.concat(types).join(' ')}\` failed`);
-    return;
-  }
-
-  // Install additional template dependencies, if present
+  // path for template dependencies
   const templateDependenciesPath = path.join(
     appPath,
     '.template.dependencies.json'
   );
+
+  // Install additional template devdependencies, if present
+  if (fs.existsSync(templateDependenciesPath)) {
+    const templateDevDependencies = require(templateDependenciesPath)
+      .devDependencies;
+    args = args.concat(
+      Object.keys(templateDevDependencies).map(key => {
+        return `${key}@${templateDevDependencies[key]}`;
+      })
+    );
+    fs.unlinkSync(templateDependenciesPath);
+
+    const devProc = spawn.sync(command, args.concat('-D').concat(args), {
+      stdio: 'inherit',
+    });
+  }
+
+  // Install additional template dependencies, if present
   if (fs.existsSync(templateDependenciesPath)) {
     const templateDependencies = require(templateDependenciesPath).dependencies;
     args = args.concat(
@@ -213,6 +207,8 @@ module.exports = function(
 function isReactInstalled(appPackage) {
   const dependencies = appPackage.dependencies || {};
 
-  return typeof dependencies.react !== 'undefined' &&
-    typeof dependencies['react-dom'] !== 'undefined';
+  return (
+    typeof dependencies.react !== 'undefined' &&
+    typeof dependencies['react-dom'] !== 'undefined'
+  );
 }
